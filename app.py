@@ -4,6 +4,8 @@ from google.genai import types
 import os
 import json
 import urllib.parse
+import requests
+from streamlit_lottie import st_lottie
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -483,6 +485,22 @@ except Exception as e:
     st.error(f"Gagal mengonfigurasi API: {e}")
     st.stop()
 
+# ─── Lottie Animations Helper ────────────────────────────────────────────────
+@st.cache_data
+def load_lottieurl(url: str):
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+# Load animations (using reliable public Lottiefiles URLs)
+lottie_thinking = load_lottieurl("https://assets5.lottiefiles.com/packages/lf20_tno6cg2w.json")  # Robot thinking/typing
+lottie_success = load_lottieurl("https://assets9.lottiefiles.com/packages/lf20_M9p23l.json")   # Robot greeting/success
+
+
 # System Instruction
 SYSTEM_INSTRUCTION = """Kamu adalah pakar literasi digital dan ahli komunikasi budaya Indonesia. Kamu menerima teks dari grup WhatsApp.
 
@@ -536,6 +554,12 @@ if st.button("🔍  Vibe-Check Sekarang!", use_container_width=True):
     if not user_input.strip():
         st.error("Pesan tidak boleh kosong!")
     else:
+        # Placeholder for Lottie Animation during loading
+        lottie_placeholder = st.empty()
+        with lottie_placeholder.container():
+            if lottie_thinking:
+                st_lottie(lottie_thinking, height=180, key="thinking")
+                
         with st.spinner("🧠 Menganalisis pesan dengan Vibe-Logic..."):
             try:
                 # Combine system instruction and user input to avoid config schema issues
@@ -567,13 +591,23 @@ if st.button("🔍  Vibe-Check Sekarang!", use_container_width=True):
             except Exception as e:
                 st.error(f"Terjadi kesalahan saat menghubungi API: {str(e)}")
                 st.session_state.analysis_result = None
+                
+        # Clear the lottie loading animation when done
+        lottie_placeholder.empty()
 
 # ─── Display Results (persisted via session_state) ───────────────────────────
 if st.session_state.analysis_result is not None:
     result = st.session_state.analysis_result
     
     st.markdown("---")
-    st.markdown("### 📊 Hasil Analisis")
+    
+    # Layout with Lottie Success Animation
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        if lottie_success:
+            st_lottie(lottie_success, height=80, key="success")
+    with col2:
+        st.markdown("<h3 style='margin-top: 15px;'>📊 Hasil Analisis</h3>", unsafe_allow_html=True)
     
     status = result.get("status", "Perlu Cek Lagi")
     penjelasan = result.get("penjelasan", "Tidak ada penjelasan.")
