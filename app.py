@@ -460,6 +460,12 @@ Analisis apakah teks itu hoaks, fakta, atau opini/belum terverifikasi.
 
 Berikan alasan singkat yang logis tapi mudah dimengerti orang awam (1-2 kalimat).
 
+Berikan juga sumber referensi untuk mendukung analisismu. Sumber bisa berupa:
+- Link artikel berita terpercaya (Kompas, Detik, CNN Indonesia, Tempo, dll.)
+- Link situs fact-checker (TurnBackHoax, CekFakta, Mafindo, dll.)
+- Nama lembaga resmi yang memberikan klarifikasi (misal: Kementerian Kesehatan, BMKG, Pertamina, dll.)
+Berikan 1-3 sumber referensi dalam bentuk array. Jika tidak ada sumber spesifik, berikan saran pencarian Google yang relevan.
+
 Buatkan 3 pilihan balasan chat:
 1. 'Sopan': Gunakan kata ganti yang hormat (Bapak/Ibu/Om/Tante), awali dengan maaf, sampaikan fakta dengan lembut. Sangat cocok untuk membalas orang tua/sesepuh tanpa menggurui.
 2. 'Santai': Gunakan bahasa gaul/asik, tanpa kesan menggurui. Cocok untuk sepupu atau teman sebaya.
@@ -469,6 +475,10 @@ Format output HARUS JSON dengan struktur persis seperti ini:
 {
     "status": "Hoaks" | "Fakta" | "Perlu Cek Lagi",
     "penjelasan": "Penjelasan singkat 1-2 kalimat.",
+    "sumber_referensi": [
+        {"judul": "Nama/judul sumber", "url": "https://link-sumber.com" },
+        {"judul": "Nama/judul sumber kedua", "url": "https://link-sumber2.com" }
+    ],
     "balasan_sopan": "Teks balasan sopan...",
     "balasan_santai": "Teks balasan santai...",
     "balasan_formal": "Teks balasan formal..."
@@ -559,6 +569,27 @@ if st.session_state.analysis_result is not None:
         <span class="status-reason">{penjelasan}</span>
     </div>
     """, unsafe_allow_html=True)
+    
+    # ─── Source References ────────────────────────────────────────────────
+    sumber_list = result.get("sumber_referensi", [])
+    if sumber_list and len(sumber_list) > 0:
+        refs_html = ""
+        for ref in sumber_list:
+            judul = ref.get("judul", "Sumber")
+            url = ref.get("url", "")
+            if url and url.startswith("http"):
+                refs_html += f'<a href="{url}" target="_blank" style="color: #075E54 !important; text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(37, 211, 102, 0.08); border-radius: 8px; margin-bottom: 6px; transition: all 0.2s ease; font-weight: 500;"><span style="font-size: 1.1rem;">🔗</span> {judul}</a>'
+            else:
+                refs_html += f'<div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(37, 211, 102, 0.08); border-radius: 8px; margin-bottom: 6px; font-weight: 500; color: #1a1a1a !important;"><span style="font-size: 1.1rem;">📰</span> {judul}</div>'
+        
+        st.markdown(f"""
+        <div style="background: rgba(255,255,255,0.75); backdrop-filter: blur(8px); border-radius: 14px; padding: 16px 18px; margin-bottom: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,0.05); border: 1px solid rgba(7, 94, 84, 0.12); animation: cardSlideIn 0.7s cubic-bezier(0.16, 1, 0.3, 1);">
+            <div style="font-weight: 700; font-size: 0.95rem; color: #075E54 !important; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.2rem;">📚</span> Sumber & Referensi Fact-Check
+            </div>
+            {refs_html}
+        </div>
+        """, unsafe_allow_html=True)
     
     # ─── Tabs for Responses ──────────────────────────────────────────────
     st.markdown("### 💬 Pilih Gaya Balasan")
