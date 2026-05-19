@@ -744,3 +744,10 @@ with col3:
     st.metric(label="🤝 Silaturahmi Aman", value="100%")
 
 st.markdown("<p style='text-align: center; color: #666; font-size: 0.8rem; margin-top: 15px;'>*Data simulasi dashboard real-time</p>", unsafe_allow_html=True)
+
+# ─── Footer ───────────────────────────────────────────────────────────────────
+st.markdown("""
+<div style="text-align: center; margin-top: 50px; margin-bottom: 20px; font-size: 0.85rem; color: #555;">
+    Developed by <a href="https://www.instagram.com/itsalifanhar?igsh=d2YxaGJ2NDJvcTRx" target="_blank" style="color: #075E54; text-decoration: none; font-weight: 800; transition: all 0.3s ease;">Muh. Alif Anhar</a>
+</div>
+""", unsafe_allow_html=True)
