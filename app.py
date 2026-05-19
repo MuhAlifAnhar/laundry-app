@@ -452,6 +452,35 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] span {
         color: inherit !important;
     }
+
+    /* ── Metric Cards (Dashboard) ── */
+    [data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.8) !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+        padding: 15px 10px !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important;
+        border: 1px solid rgba(37, 211, 102, 0.2) !important;
+        text-align: center !important;
+        transition: transform 0.3s ease !important;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 6px 20px rgba(37, 211, 102, 0.15) !important;
+    }
+    [data-testid="stMetricLabel"] {
+        justify-content: center !important;
+        font-weight: 700 !important;
+        color: #075E54 !important;
+        font-size: 0.9rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        justify-content: center !important;
+        font-size: 1.8rem !important;
+        font-weight: 800 !important;
+        color: #1a1a1a !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -697,3 +726,21 @@ if st.session_state.analysis_result is not None:
     render_response_tab(tab1, result.get("balasan_sopan", ""), "sopan")
     render_response_tab(tab2, result.get("balasan_santai", ""), "santai")
     render_response_tab(tab3, result.get("balasan_formal", ""), "formal")
+
+# ─── Live Dashboard Counter ───────────────────────────────────────────────────
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("<h4 style='text-align: center; color: #075E54; margin-bottom: 20px; font-weight: 800;'>🌍 Dampak Sosial Adem-Adem Grup</h4>", unsafe_allow_html=True)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(label="🛡️ Grup Diademkan", value="1,200+")
+
+with col2:
+    st.metric(label="❌ Hoaks Ditangkal", value="4,500+")
+
+with col3:
+    st.metric(label="🤝 Silaturahmi Aman", value="100%")
+
+st.markdown("<p style='text-align: center; color: #666; font-size: 0.8rem; margin-top: 15px;'>*Data simulasi dashboard real-time</p>", unsafe_allow_html=True)
