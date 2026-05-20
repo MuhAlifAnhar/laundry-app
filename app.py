@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 import os
 import json
+import time
 import urllib.parse
 import requests
 from streamlit_lottie import st_lottie
@@ -400,6 +401,77 @@ st.markdown("""
         color: #075E54 !important;
     }
 
+    /* ── Retry Status Banner ── */
+    .retry-banner {
+        background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%) !important;
+        border-left: 4px solid #fb8c00 !important;
+        border-radius: 10px !important;
+        padding: 12px 16px !important;
+        margin: 8px 0 !important;
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
+        color: #e65100 !important;
+        animation: cardSlideIn 0.4s ease-out !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+    .retry-success {
+        background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%) !important;
+        border-left: 4px solid #43a047 !important;
+        color: #2e7d32 !important;
+    }
+
+    /* ── Footer ── */
+    .app-footer {
+        text-align: center !important;
+        padding: 2rem 0 1.5rem !important;
+        margin-top: 2.5rem !important;
+        animation: fadeInUp 0.8s ease-out !important;
+    }
+    .footer-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(7, 94, 84, 0.25), transparent);
+        margin-bottom: 1.5rem;
+    }
+    .footer-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 0.92rem;
+        color: #6b7280 !important;
+        font-weight: 500;
+        flex-wrap: wrap;
+    }
+    .footer-content span {
+        color: #6b7280 !important;
+    }
+    .footer-ig {
+        color: #075E54 !important;
+        font-weight: 700 !important;
+        text-decoration: none !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: rgba(37, 211, 102, 0.1);
+    }
+    .footer-ig:hover {
+        color: #ffffff !important;
+        background: linear-gradient(135deg, #25D366, #128C7E) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 3px 10px rgba(37, 211, 102, 0.3) !important;
+    }
+    .footer-powered {
+        font-size: 0.78rem;
+        color: #9ca3af !important;
+        margin-top: 6px;
+        letter-spacing: 0.3px;
+    }
+    .footer-powered span {
+        color: #9ca3af !important;
+    }
+
     /* ── Success/Warning/Error alerts ── */
     .stAlert, .stAlert p, .stAlert span,
     div[data-testid="stNotification"],
@@ -530,6 +602,84 @@ lottie_thinking = load_lottieurl("https://assets5.lottiefiles.com/packages/lf20_
 lottie_success = load_lottieurl("https://assets9.lottiefiles.com/packages/lf20_M9p23l.json")   # Robot greeting/success
 
 
+# ─── Model Fallback Chain & Retry Logic ────────────────────────────────────
+FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
+
+def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
+    """Call Gemini API with automatic retry (exponential backoff) and model fallback."""
+    last_error = None
+    status_placeholder = st.empty()
+    
+    for model_idx, model_name in enumerate(FALLBACK_MODELS):
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                # Success! Show which model was used if it wasn't the primary
+                if model_idx > 0 or attempt > 1:
+                    status_placeholder.markdown(
+                        f'<div class="retry-banner retry-success">'
+                        f'✅ <b>{model_name}</b>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    status_placeholder.empty()
+                return response
+                
+            except Exception as e:
+                last_error = e
+                error_str = str(e).lower()
+                
+                # Check if it's a retryable server error
+                is_retryable = any(kw in error_str for kw in [
+                    "503", "overloaded", "unavailable",
+                    "resource_exhausted", "resource exhausted",
+                    "quota", "rate limit", "rate_limit",
+                    "too many requests", "429",
+                    "500", "internal", "deadline", "timeout",
+                    "capacity", "busy", "congested"
+                ])
+                
+                if is_retryable:
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** (attempt - 1))
+                        status_placeholder.markdown(
+                            f'<div class="retry-banner">'
+                            f'⏳ Model <b>{model_name}</b> sedang sibuk '
+                            f'(percobaan {attempt}/{max_retries}). '
+                            f'Retry dalam {delay} detik...'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+                        time.sleep(delay)
+                    else:
+                        if model_idx < len(FALLBACK_MODELS) - 1:
+                            next_model = FALLBACK_MODELS[model_idx + 1]
+                            status_placeholder.markdown(
+                                f'<div class="retry-banner">'
+                                f'⚠️ Model <b>{model_name}</b> gagal setelah {max_retries}x percobaan. '
+                                f'Beralih ke model cadangan: <b>{next_model}</b>...'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                            time.sleep(1)
+                        break  # Try next model in fallback chain
+                else:
+                    # Non-retryable error — raise immediately
+                    status_placeholder.empty()
+                    raise e
+    
+    # All models exhausted
+    status_placeholder.empty()
+    raise last_error if last_error else Exception("Semua model Gemini gagal merespons.")
+
 # System Instruction
 SYSTEM_INSTRUCTION = """Kamu adalah pakar literasi digital dan ahli komunikasi budaya Indonesia. Kamu menerima teks dari grup WhatsApp.
 
@@ -591,14 +741,11 @@ if st.button("🔍  Vibe-Check Sekarang!", use_container_width=True):
                 
         with st.spinner("🧠 Menganalisis pesan dengan Vibe-Logic..."):
             try:
-                # Combine system instruction and user input to avoid config schema issues
+                # Combine system instruction and user input
                 prompt = f"{SYSTEM_INSTRUCTION}\n\nPESAN WA UNTUK DIANALISIS:\n{user_input}"
                 
-                # Use Gemini 2.5 Flash based on available models
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt
-                )
+                # Call Gemini with automatic retry & model fallback
+                response = call_gemini_with_retry(client, prompt)
                 
                 # Clean markdown blocks if Gemini returns them
                 response_text = response.text.strip()
@@ -614,11 +761,29 @@ if st.button("🔍  Vibe-Check Sekarang!", use_container_width=True):
                 try:
                     st.session_state.analysis_result = json.loads(response_text)
                 except json.JSONDecodeError:
-                    st.error("Gagal membaca hasil dari AI. AI mengembalikan format yang tidak valid.")
+                    st.error("❌ Gagal membaca hasil dari AI. Format respons tidak valid.")
                     st.session_state.analysis_result = None
                     
             except Exception as e:
-                st.error(f"Terjadi kesalahan saat menghubungi API: {str(e)}")
+                error_msg = str(e)
+                if any(kw in error_msg.lower() for kw in ["503", "overloaded", "unavailable"]):
+                    st.error(
+                        "🔥 **Server Gemini sedang sangat sibuk (503 Overloaded).**\n\n"
+                        "Semua model cadangan juga tidak tersedia saat ini. "
+                        "Silakan tunggu 1-2 menit lalu coba lagi."
+                    )
+                elif any(kw in error_msg.lower() for kw in ["api_key", "api key", "invalid", "unauthorized", "401", "403"]):
+                    st.error(
+                        "🔑 **API Key tidak valid atau sudah expired.**\n\n"
+                        "Silakan periksa kembali API Key Anda di Google AI Studio."
+                    )
+                elif any(kw in error_msg.lower() for kw in ["quota", "rate limit", "429"]):
+                    st.error(
+                        "📊 **Kuota API habis atau terlalu banyak request.**\n\n"
+                        "Tunggu beberapa saat sebelum mencoba lagi."
+                    )
+                else:
+                    st.error(f"⚠️ Terjadi kesalahan: {error_msg}")
                 st.session_state.analysis_result = None
                 
         # Clear the lottie loading animation when done
@@ -726,6 +891,20 @@ if st.session_state.analysis_result is not None:
     render_response_tab(tab1, result.get("balasan_sopan", ""), "sopan")
     render_response_tab(tab2, result.get("balasan_santai", ""), "santai")
     render_response_tab(tab3, result.get("balasan_formal", ""), "formal")
+
+# ─── Footer ──────────────────────────────────────────────────────────────────
+# st.markdown("""
+# <div class="app-footer">
+#     <div class="footer-divider"></div>
+#     <div class="footer-content">
+#         <span>Made with ❤️ by</span>
+#         <a href="https://instagram.com/itsalifanhar" target="_blank" class="footer-ig">📸 @itsalifanhar</a>
+#     </div>
+#     <div class="footer-powered">
+#         <span>🛡️ Adem-Adem Grup &bull; Powered by Gemini AI</span>
+#     </div>
+# </div>
+# """, unsafe_allow_html=True)
 
 # ─── Live Dashboard Counter ───────────────────────────────────────────────────
 st.markdown("<br><br>", unsafe_allow_html=True)
