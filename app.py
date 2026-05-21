@@ -581,7 +581,10 @@ os.environ["GEMINI_API_KEY"] = api_key
 
 # Configure Gemini
 try:
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(api_version='v1')
+    )
 except Exception as e:
     st.error(f"Gagal mengonfigurasi API: {e}")
     st.stop()
@@ -605,16 +608,27 @@ lottie_success = load_lottieurl("https://assets9.lottiefiles.com/packages/lf20_M
 # ─── Model Fallback Chain & Retry Logic ────────────────────────────────────
 FALLBACK_MODELS = [
     "gemini-2.5-flash",
+    "gemini-2.5-pro",
     "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    # "gemini-1.5-flash-latest",
+    # "gemini-1.5-flash-002",
 ]
 
-def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
+def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=3):
     """Call Gemini API with automatic retry (exponential backoff) and model fallback."""
     last_error = None
     status_placeholder = st.empty()
     
     for model_idx, model_name in enumerate(FALLBACK_MODELS):
+        # Tambahkan jeda waktu sebelum berganti ke model cadangan berikutnya
+        if model_idx > 0:
+            status_placeholder.markdown(
+                f'<div class="retry-banner">'
+                f'⏳ Menghindari limitasi kuota: Jeda otomatis 3 detik sebelum beralih ke <b>{model_name}</b>... </div>',
+                unsafe_allow_html=True
+            )
+            time.sleep(3)
+
         for attempt in range(1, max_retries + 1):
             try:
                 response = client.models.generate_content(
@@ -625,7 +639,7 @@ def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
                 if model_idx > 0 or attempt > 1:
                     status_placeholder.markdown(
                         f'<div class="retry-banner retry-success">'
-                        f'✅ <b>{model_name}</b>'
+                        f'✅ Berhasil menggunakan model: <b>{model_name}</b>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
@@ -637,7 +651,7 @@ def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
                 last_error = e
                 error_str = str(e).lower()
                 
-                # Check if it's a retryable server error
+                # Check if it's a retryable server error or rate limit
                 is_retryable = any(kw in error_str for kw in [
                     "503", "overloaded", "unavailable",
                     "resource_exhausted", "resource exhausted",
@@ -652,7 +666,7 @@ def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
                         delay = base_delay * (2 ** (attempt - 1))
                         status_placeholder.markdown(
                             f'<div class="retry-banner">'
-                            f'⏳ Model <b>{model_name}</b> sedang sibuk '
+                            f'⏳ Model <b>{model_name}</b> sibuk/limit '
                             f'(percobaan {attempt}/{max_retries}). '
                             f'Retry dalam {delay} detik...'
                             f'</div>',
@@ -665,11 +679,10 @@ def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
                             status_placeholder.markdown(
                                 f'<div class="retry-banner">'
                                 f'⚠️ Model <b>{model_name}</b> gagal setelah {max_retries}x percobaan. '
-                                f'Beralih ke model cadangan: <b>{next_model}</b>...'
+                                f'Mempersiapkan beralih ke: <b>{next_model}</b>...'
                                 f'</div>',
                                 unsafe_allow_html=True
                             )
-                            time.sleep(1)
                         break  # Try next model in fallback chain
                 else:
                     # Non-retryable error — raise immediately
@@ -681,34 +694,23 @@ def call_gemini_with_retry(client, prompt, max_retries=3, base_delay=2):
     raise last_error if last_error else Exception("Semua model Gemini gagal merespons.")
 
 # System Instruction
-SYSTEM_INSTRUCTION = """Kamu adalah pakar literasi digital dan ahli komunikasi budaya Indonesia. Kamu menerima teks dari grup WhatsApp.
+SYSTEM_INSTRUCTION = """Pakar literasi digital & komunikasi Indonesia. Analisis teks WA.
+Klasifikasi status: "Hoaks" | "Fakta" | "Perlu Cek Lagi".
+Berikan alasan logis (1-2 kalimat).
+Berikan 1-3 referensi (link berita terpercaya/situs fact-checker/lembaga resmi). Jika tidak ada, beri saran pencarian Google.
+Buat 3 opsi balasan WA:
+1. 'Sopan': Hormat (Bapak/Ibu/Om/Tante), lembut, cocok untuk orang tua.
+2. 'Santai': Gaul, asik, tidak menggurui, untuk teman/sepupu.
+3. 'Formal': Baku, netral, untuk grup RT.
 
-Analisis apakah teks itu hoaks, fakta, atau opini/belum terverifikasi.
-
-Berikan alasan singkat yang logis tapi mudah dimengerti orang awam (1-2 kalimat).
-
-Berikan juga sumber referensi untuk mendukung analisismu. Sumber bisa berupa:
-- Link artikel berita terpercaya (Kompas, Detik, CNN Indonesia, Tempo, dll.)
-- Link situs fact-checker (TurnBackHoax, CekFakta, Mafindo, dll.)
-- Nama lembaga resmi yang memberikan klarifikasi (misal: Kementerian Kesehatan, BMKG, Pertamina, dll.)
-Berikan 1-3 sumber referensi dalam bentuk array. Jika tidak ada sumber spesifik, berikan saran pencarian Google yang relevan.
-
-Buatkan 3 pilihan balasan chat:
-1. 'Sopan': Gunakan kata ganti yang hormat (Bapak/Ibu/Om/Tante), awali dengan maaf, sampaikan fakta dengan lembut. Sangat cocok untuk membalas orang tua/sesepuh tanpa menggurui.
-2. 'Santai': Gunakan bahasa gaul/asik, tanpa kesan menggurui. Cocok untuk sepupu atau teman sebaya.
-3. 'Formal': Gunakan bahasa baku yang netral. Cocok untuk grup RT atau lingkungan.
-
-Format output HARUS JSON dengan struktur persis seperti ini:
+Output WAJIB JSON mentah (tanpa ```json):
 {
-    "status": "Hoaks" | "Fakta" | "Perlu Cek Lagi",
-    "penjelasan": "Penjelasan singkat 1-2 kalimat.",
-    "sumber_referensi": [
-        {"judul": "Nama/judul sumber", "url": "https://link-sumber.com" },
-        {"judul": "Nama/judul sumber kedua", "url": "https://link-sumber2.com" }
-    ],
-    "balasan_sopan": "Teks balasan sopan...",
-    "balasan_santai": "Teks balasan santai...",
-    "balasan_formal": "Teks balasan formal..."
+  "status": "Hoaks" | "Fakta" | "Perlu Cek Lagi",
+  "penjelasan": "Alasan singkat 1-2 kalimat",
+  "sumber_referensi": [{"judul": "Nama/judul sumber", "url": "https://link-sumber.com"}],
+  "balasan_sopan": "teks...",
+  "balasan_santai": "teks...",
+  "balasan_formal": "teks..."
 }
 Pastikan hanya mengembalikan JSON mentah yang valid, tanpa markdown tambahan seperti ```json.
 """
